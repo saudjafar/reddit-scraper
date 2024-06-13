@@ -40,7 +40,7 @@ def extract_and_format_citations(messages):
                 if annotation.type == "file_citation":
                     citation_text = annotation.text
                     # citation_detail = annotation.file_citation.quote
-                    print("CITATION TEXT: ", citation_text)
+                    # print("CITATION TEXT: ", citation_text)
                     # print("CITATION DETAIL: ",citation_detail)
                     # TODO: Implement citation hover. 
                     # citation_replace = "\nCitation: '" + citation_detail + "'"
@@ -97,44 +97,17 @@ def get_response(user_prompt, file_id):
 def clear_input_field():
     st.session_state.user_question = st.session_state.user_input
     st.session_state.user_input = ""
-
 def set_send_input():
     st.session_state.send_input = True
+    # print(st.session_state.user_question)
     clear_input_field()
 
 def clear_url_field():
     st.session_state.reddit_url = st.session_state.reddit_url_input
-    st.session_state.reddit_url_input = ""
+    # st.session_state.reddit_url_input = ""
 def set_reddit_url_input():
-    st.session_state.reddit_url_input = st.session_state.reddit_url
-    clear_url_field()
-
-def delete_thread_and_file(thread_id, file_id):
-    response = client.beta.threads.delete(thread_id)
-    print("OPENAI THREAD DELETE RESPONSE: ",response)
-    response = client.files.delete(file_id)
-    print("OPENAI FILE DELETE RESPONSE: ",response)    
-    
-    # if 'file_id' in st.session_state:
-    #     del st.session_state['file_id']
-
-    local_file_name = "redditContent.txt"
-    if os.path.exists(local_file_name):
-        os.remove(local_file_name)
-        print("LOCAL TXT FILE DELETED SUCCESSFULLY")
-    else:
-        print("LOCAL TXT FILE DOES NOT EXIST")
-
-def clear_chat (file_id, chat_history):
-    print("CLEARING CHAT")
-    delete_thread_and_file(assistant_thread.id, file_id)
-
-    chat_history.clear()
-    # st.session_state.messages = []
-    st.warning("Chat cleared successfully!")
-    time.sleep(1)
-    st.cache_resource.clear()
-    st.rerun()
+    st.session_state.send_reddit_url_input = True
+    # clear_url_field()
 
 # Gets reddit thread in JSON format and uploads it 
 # as a file to OpenAI. Returns id of uploaded file
@@ -149,52 +122,76 @@ def get_reddit_thread_json(url):
 
         # print the modified URL
         print("Modified URL:", modified_url)
+        
+        return modified_url
+    else:
+        st.error("Invalid Url")
+        return None
 
-        try:
-            # Fetch the JSON object from the modified URL
-            response = requests.get(modified_url)
-            response.raise_for_status()  # Raise an HTTPError for bad responses
 
-            # Get the JSON content
-            json_content = response.json()
+def delete_thread_and_file(thread_id, file_id):
+    response = client.beta.threads.delete(thread_id)
+    print("OPENAI THREAD DELETE RESPONSE: ",response)
+    response = client.files.delete(file_id)
+    print("OPENAI FILE DELETE RESPONSE: ",response)    
+    
 
-            # Convert JSON object to string
-            json_str = json.dumps(json_content, indent=4)
+    local_file_name = "redditContent.txt"
+    if os.path.exists(local_file_name):
+        os.remove(local_file_name)
+        print("LOCAL TXT FILE DELETED SUCCESSFULLY")
+    else:
+        print("LOCAL TXT FILE DOES NOT EXIST")
 
-            # Save the JSON content to a .txt file
-            with open('redditContent.txt', 'w') as file:
-                file.write(json_str)
+def clear_chat (file_id, chat_history):
+    print("CLEARING CHAT")
+    delete_thread_and_file(assistant_thread.id, file_id)
+    st.textarea_content = ""
+    # st.reddit_url = ""
+    chat_history.clear()
+    # st.session_state.messages = []
+    st.warning("Chat cleared successfully!")
+    time.sleep(1)
+    st.cache_resource.clear()
+    st.rerun()
 
-            try:
-                response = client.files.create(
-                    file=open("redditContent.txt", "rb"),
-                    purpose="assistants"
-                )
-                print ("Uploaded file successfully to OpenAI: ", response.id)
-                file_id = response.id
-                st.success("JSON content fetched and successfully uploaded to OpenAI.")
-                return file_id
-            except Exception as e:
-                st.error("Error uploading file to OpenAI: ", e)
-                return None
-        except requests.exceptions.RequestException as e:
-            st.error(f"Error fetching Reddit thread: {e}")
-            return None
 
 
 def main():
     if "reddit_url_input" not in st.session_state:
         st.session_state.reddit_url_input= ""
         st.session_state.reddit_url= ""
+        st.session_state.send_reddit_url_input = False
     if "file_id" not in st.session_state:
         st.session_state.file_id = ""
+    
     # Input element to accept a URL from the user
-    reddit_url = st.text_input("Enter the  URL", key="reddit_url")
-    get_json_btn = st.button("Get Reddit thread", on_click=set_reddit_url_input)
-    if get_json_btn or st.session_state.reddit_url_input:
-        st.session_state.file_id = get_reddit_thread_json(reddit_url)
-        # print("fileID in session state = ",st.session_state.file_id)
-     
+    reddit_url = st.text_input("Enter the  URL", key="reddit_url", on_change=set_reddit_url_input)
+    if st.button("Get Reddit Thread"):
+        modified_url = get_reddit_thread_json(reddit_url)
+        if modified_url:
+            reddit_json_content = st.link_button("Click here to open Reddit Thread",modified_url)
+    
+    user_content = st.text_area("Paste the content here after copying contents from the new tab" ,key="textarea_content")
+    upload_to_openai_btn = st.button("Upload content to OpenAI")
+    if user_content and upload_to_openai_btn:
+        # Save the content to a text file
+        file_path = os.path.join("redditContent.txt")
+        with open(file_path, "w") as f:
+            f.write(user_content)
+
+        try:
+            response = client.files.create(
+                file=open("redditContent.txt", "rb"),
+                purpose="assistants"
+            )
+            print ("Uploaded file successfully to OpenAI: ", response.id)
+            st.session_state.file_id = response.id
+            st.success("Textarea content successfully uploaded to OpenAI.")
+        except Exception as e:
+            st.error("Error uploading textarea content to OpenAI: ", e)
+    
+
     chat_container = st.container()    
     if "send_input" not in st.session_state:
         st.session_state.send_input = False
@@ -204,26 +201,21 @@ def main():
     #     st.session_state.messages = []
     chat_history = StreamlitChatMessageHistory(key="history")
     
-    user_input = st.text_input("Type your message here", key="user_input", on_change=set_send_input)
+    user_input = st.text_input("Type your message here", key="user_input" ,on_change=set_send_input)
+    st.info("The above text input widget will be automatically cleared once you move the cursor/focus away from it or hit \"Enter\" (reset for the next prompt). Your prompt is saved. Hit the \"Send\" button to get a response. ")
     col1, col2 = st.columns([1,7])
     with col1:
         send_button = st.button("Send", key="send_button", disabled=st.session_state.file_id == None)
-    if send_button or st.session_state.send_input:
+    if send_button and st.session_state.send_input:
         if st.session_state.user_question != "" :
+
             with chat_container:
                 chat_history.add_user_message(st.session_state.user_question)
-                # st.chat_message("user").write(st.session_state.user_question)
-                # st.session_state.messages.append({"role":"user","content": st.session_state.user_question})
-                # with st.chat_message("user"):
-                #     st.markdown(st.session_state.user_question)
                 response = get_response(st.session_state.user_question, st.session_state.file_id)
                 for responses in response:
                     chat_history.add_ai_message(responses)
-                    # st.chat_message("ai").write(responses)
-                    # st.session_state.messages.append({"role":"assistant","content": responses})
-                    # with st.chat_message("assistant"):
-                    #     st.markdown(responses)
                 st.session_state.user_question = ""
+    
     # print(chat_history.messages)
     if chat_history.messages != []:
         with chat_container:
@@ -241,5 +233,6 @@ def main():
                     clear_chat(st.session_state.file_id, chat_history)
 
 
+    
 if __name__ == '__main__':
     main()
