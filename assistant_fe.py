@@ -106,7 +106,7 @@ def clear_url_field():
     st.session_state.reddit_url = st.session_state.reddit_url_input
     st.session_state.reddit_url_input = ""
 def set_reddit_url_input():
-    st.session_state.reddit_url_input = True
+    st.session_state.reddit_url_input = st.session_state.reddit_url
     clear_url_field()
 
 def delete_thread_and_file(thread_id, file_id):
@@ -125,12 +125,12 @@ def delete_thread_and_file(thread_id, file_id):
     else:
         print("LOCAL TXT FILE DOES NOT EXIST")
 
-def clear_chat (file_id):
+def clear_chat (file_id, chat_history):
     print("CLEARING CHAT")
     delete_thread_and_file(assistant_thread.id, file_id)
 
-    # chat_history.clear()
-    st.session_state.messages = []
+    chat_history.clear()
+    # st.session_state.messages = []
     st.warning("Chat cleared successfully!")
     time.sleep(1)
     st.cache_resource.clear()
@@ -184,14 +184,14 @@ def get_reddit_thread_json(url):
 
 def main():
     if "reddit_url_input" not in st.session_state:
-        st.session_state.reddit_url_input= False
+        st.session_state.reddit_url_input= ""
         st.session_state.reddit_url= ""
     if "file_id" not in st.session_state:
         st.session_state.file_id = ""
     # Input element to accept a URL from the user
     reddit_url = st.text_input("Enter the  URL", key="reddit_url")
-    get_json_btn = st.button("Get Reddit thread")
-    if(get_json_btn):
+    get_json_btn = st.button("Get Reddit thread", on_click=set_reddit_url_input)
+    if get_json_btn or st.session_state.reddit_url_input:
         st.session_state.file_id = get_reddit_thread_json(reddit_url)
         # print("fileID in session state = ",st.session_state.file_id)
      
@@ -199,9 +199,11 @@ def main():
     if "send_input" not in st.session_state:
         st.session_state.send_input = False
         st.session_state.user_question = ""
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    # chat_history = StreamlitChatMessageHistory(key="history")
+
+    # if "messages" not in st.session_state:
+    #     st.session_state.messages = []
+    chat_history = StreamlitChatMessageHistory(key="history")
+    
     user_input = st.text_input("Type your message here", key="user_input", on_change=set_send_input)
     col1, col2 = st.columns([1,7])
     with col1:
@@ -209,34 +211,34 @@ def main():
     if send_button or st.session_state.send_input:
         if st.session_state.user_question != "" :
             with chat_container:
+                chat_history.add_user_message(st.session_state.user_question)
                 # st.chat_message("user").write(st.session_state.user_question)
-                # chat_history.add_user_message(st.session_state.user_question)
-                st.session_state.messages.append({"role":"user","content": st.session_state.user_question})
-                with st.chat_message("user"):
-                    st.markdown(st.session_state.user_question)
+                # st.session_state.messages.append({"role":"user","content": st.session_state.user_question})
+                # with st.chat_message("user"):
+                #     st.markdown(st.session_state.user_question)
                 response = get_response(st.session_state.user_question, st.session_state.file_id)
                 for responses in response:
+                    chat_history.add_ai_message(responses)
                     # st.chat_message("ai").write(responses)
-                    # chat_history.add_ai_message(responses)
-                    st.session_state.messages.append({"role":"assistant","content": responses})
-                    with st.chat_message("assistant"):
-                        st.markdown(responses)
+                    # st.session_state.messages.append({"role":"assistant","content": responses})
+                    # with st.chat_message("assistant"):
+                    #     st.markdown(responses)
                 st.session_state.user_question = ""
-    # # print(chat_history.messages)
-    # if chat_history.messages != []:
-    #     with chat_container:
-    #         st.write("Chat history: ")
-    #         for message in chat_history.messages:
-    #             st.chat_message(message.type).write(message.content)
-    # clear_chat_button_disabled = len(chat_history.messages) == 0
-    clear_chat_button_disabled = len(st.session_state.messages) == 0
+    # print(chat_history.messages)
+    if chat_history.messages != []:
+        with chat_container:
+            st.write("Chat history: ")
+            for message in chat_history.messages:
+                st.chat_message(message.type).write(message.content)
+    clear_chat_button_disabled = len(chat_history.messages) == 0
+    # clear_chat_button_disabled = len(st.session_state.messages) == 0
     if not clear_chat_button_disabled:
         with col2:
             with st.popover("Clear Chat"):
                 st.write("Are you sure you want to clear the chat?")
                 confirmation = st.button ("Confirm Clear")
                 if confirmation:
-                    clear_chat(st.session_state.file_id)
+                    clear_chat(st.session_state.file_id, chat_history)
 
 
 if __name__ == '__main__':
